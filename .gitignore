@@ -1,0 +1,14 @@
+# API Keys and Secrets
+.env
+
+# Google Auth Files (CRITICAL)
+credentials.json
+token.json
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Local environments
+venv/
+.DS_Store
