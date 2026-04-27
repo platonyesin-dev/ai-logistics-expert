@@ -19,9 +19,34 @@ st.markdown("Ask me anything about our plans, regions, or safety protocols.")
 # We use the exact same embedding model as we did in ingest.py
 embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 index_name = "company-expert"
-
 # Connect to the database we already filled
 vectorstore = PineconeVectorStore.from_existing_index(index_name, embeddings)
+
+# This function decides which data to use gmail one or pdf guide 
+def priority_retriever(query):
+    # 1. Try to find info in the PDF first
+    # We use a filter to look ONLY at PDF chunks
+    pdf_results = vectorstore.similarity_search(
+        query, 
+        k=3, 
+        filter={"source": "company_info.pdf"} 
+    )
+    
+    # 2. If we found something in the PDF, return it immediately
+    if pdf_results:
+        st.toast("🔍 Logic: Match found in PDF manual.")
+        print("Found answer in PDF.")
+        return pdf_results
+    
+    # 3. If PDF is empty, try the Gmail data
+    st.toast("📧 Logic: PDF silent. Searching Gmail archives...")
+    print("PDF silent. Checking Gmail archives...")
+    gmail_results = vectorstore.similarity_search(
+        query, 
+        k=3, 
+        filter={"source": "gmail"}
+    )
+    return gmail_results
 
 # 3. Initialize Groq as our chat brain 
 llm = ChatGroq(
@@ -34,10 +59,17 @@ llm = ChatGroq(
 # 4. Create the "Chain" 
 # Define a prompt that tells the AI how to use the retrieved info
 system_prompt = (
-    "Use the following pieces of retrieved context to answer the question. "
-    "If you don't know the answer, say that you don't know. "
-    "\n\n"
-    "{context}"
+    "You are a Senior Logistics Consultant for Atlas Prime. "
+    "You have two sources of knowledge: \n"
+    "1. THE MANUAL (Official rules/plans)\n"
+    "2. CLIENT EXPERIENCE (Recent emails and situations)\n\n"
+    "INSTRUCTIONS:\n"
+    "- Always start with the official rule from the Manual.\n"
+    "- THEN, check the Client Experience. If you find a relevant real-world situation, "
+    "explain how it was handled (e.g., 'In a similar case last month, we did...').\n"
+    "- If Gmail data shows a newer update than the PDF, prioritize the Gmail data but "
+    "mention it is a recent change.\n\n"
+    "CONTEXT:\n{context}"
 )
 
 prompt_template = ChatPromptTemplate.from_messages(
